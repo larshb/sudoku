@@ -5,7 +5,7 @@ from typing import List
 import logging as log
 
 # Rich logging
-LOGLEVEL = log.DEBUG
+LOGLEVEL = log.INFO
 try:
     from rich.logging import RichHandler
     log.basicConfig(level=LOGLEVEL, format="%(message)s", datefmt="[%X]", handlers=[RichHandler()])
@@ -21,12 +21,6 @@ NONE_REMOVED = -2
 
 
 # Convenience functions
-def todo(*args):
-    if args:
-        log.warning(f"[TODO] {args[0]}")
-    else:
-        log.warning("[TODO]")
-
 def string2tile(string : str) -> int:
     if string.startswith('_'):
         return 0
@@ -142,7 +136,7 @@ class SudokuSolver:
         tile = self.get_tile(row, col)
         if tile.set(val):
             if self.verbose:
-                log.info(f"Set [{row:2d}, {col:2d}] {val}")
+                log.debug(f"Set [{row:2d}, {col:2d}] {val}")
             tile.resolve()
         #todo("Remove adjacent possible")
         n = 0
@@ -226,34 +220,28 @@ class SudokuSolver:
                     r, c = rows[0], cols[0]
                     if count == 1:
                         if self.get_tile(r, c).resolve() == EMPTY:
-                            log.info(f"[{r:2d}, {c:2d}] must be {val}")
+                            log.debug(f"[{r:2d}, {c:2d}] must be {val}")
                             n += self.commit(r, c, val)
-                            break
-                    if len(rows) == 1:
-                        r = rows[0]
-                        #log.debug(f"[{br*self.N:2d}.., {bc*self.N}..] {val} must be on row {r} {str(cols)}")
+                    elif len(rows) == 1:
+                        #r = rows[0]
+                        removed = 0
                         for c in range(self.N*self.N):
-                            n_ = 0
                             if (r, c) not in bids:
-                                n_ += self.remove_possible(r, c, val)
-                            if n_:
-                                n += n_
+                                removed += self.remove_possible(r, c, val)
+                            if removed:
+                                n += removed
                                 log.debug(f"[{br*self.N:2d}.., {bc*self.N}..] {val} must be on row {r} {str(cols)}")
-                    if len(cols) == 1:
-                        c = cols[0]
+                    elif len(cols) == 1:
+                        #c = cols[0]
+                        removed = 0
                         for r in range(self.N*self.N):
-                            n_ = 0
                             if (r, c) not in bids:
-                                n_ += self.remove_possible(r, c, val)
-                            if n_:
-                                n += n_
+                                removed += self.remove_possible(r, c, val)
+                            if removed:
+                                n += removed
                                 log.debug(f"[{br*self.N:2d}.., {bc*self.N}..] {val} must be on col {c} {str(rows)}")
-                    # TODO single col
 
-
-
-        # Manually check if row/col/box candidate is lonesome
-        return n
+        # Manually check if row/col candidate is lonesome
         for a in range(self.N*self.N):
             for b in range(1, self.N*self.N+1):
                 rows = []
@@ -265,14 +253,17 @@ class SudokuSolver:
                         rows.append(b)
                 if len(cols) == 1:
                     row, col = a, cols[0]
-                    #log.info(f"{val} must be at [{row:2d}, {col:2d}] (lonesome at col)")
-                    self.commit(row, col, val)
+                    if self.get_tile(row, col).resolve() == EMPTY:
+                        log.info(f"{val} must be at [{row:2d}, {col:2d}] (lonesome at col)")
+                        n += self.commit(row, col, val)
                 if len(rows) == 1:
                     row, col = rows[0], a
-                    #log.info(f"{val} must be at [{row:2d}, {col:2d}] (lonesome at row)")
-                    self.commit(row, col, val)
-        # TODO col
-        # TODO box
+                    if self.get_tile(row, col).resolve() == EMPTY:
+                        log.info(f"{val} must be at [{row:2d}, {col:2d}] (lonesome at row)")
+                        n += self.commit(row, col, val)
+
+        # Manually check if box candidate is lonesome
+        # TODO
 
         return n
 
@@ -288,7 +279,7 @@ class SudokuSolver:
         self.load(open(path).read())
 
     def solve_step(self):
-        log.warning("STEP")
+        log.debug("Step")
         removed = self.refresh_possible()
         log.debug(f"Removed {removed} possible")
         return removed, self.solve_count()
@@ -315,13 +306,13 @@ class SudokuSolver:
         # TODO: Boxes
         return True
 
-    def test(self):
-        indices = sorted(self.indices, key=lambda args: self.get_tile(*args).get_possiblecount())
-        for r, c in indices:
-            if self.get_tile(r, c).get_possiblecount() > 1:
-                print(f"[{r:2d}, {c:2d}] {str(self.__board[r][c].get_possible())}")
-        #r, c = 8, 4
-        #print(f"[{r:2d}, {c:2d}] {str(self.__board[r][c].get_possible())}")
+    def solve(self):
+
+        prev, solved, removed = 0, self.solve_count(), 0
+        while prev != solved or removed > 0:
+            prev = solved
+            removed, solved = self.solve_step()
+            log.info(f"{removed} removals, {solved} solved")
 
         if self.validate():
             log.info("Solution valid")
@@ -337,20 +328,7 @@ if __name__ == "__main__":
     solver.commit( 0,  6,  4)
     solver.commit( 1,  3,  2)
 
-    #log.info("Initial")
-    #log.info(f"{solver.solve_count()} solved")
-    #print(str(solver))
-    #solver.print_possiblecount()
+    solver.solve()
     
-    prev, solved, removed = 0, solver.solve_count(), 0
-    while prev != solved or removed > 0:
-        prev = solved
-        removed, solved = solver.solve_step()
-        log.info(f"{removed} removals, {solved} solved")
-        #print(str(solver))
-        #solver.print_possiblecount()
-
     print(str(solver))
-    
-    solver.test()
 
