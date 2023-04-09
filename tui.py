@@ -144,17 +144,19 @@ class TTY:
     def raw(self, when=TCSAFLUSH):
         IFLAG, OFLAG, CFLAG, LFLAG, ISPEED, OSPEED, CC = range(7)
         mode = self.mode
-        #mode[IFLAG] &= ~(BRKINT | ICRNL | INPCK | ISTRIP | IXON)
-        #mode[OFLAG] &= ~(OPOST)
-        #mode[CFLAG] &= ~(CSIZE | PARENB)
-        #mode[CFLAG] |= CS8
+        mode[IFLAG] &= ~(BRKINT | ICRNL | INPCK | ISTRIP | IXON)
+        mode[OFLAG] &= ~(OPOST)
+        mode[CFLAG] &= ~(CSIZE | PARENB)
+        mode[CFLAG] |= CS8
         mode[LFLAG] &= ~(ECHO | ICANON | IEXTEN | ISIG)
-        #mode[CC][VMIN] = 1
-        #mode[CC][VTIME] = 0
+        mode[CC][VMIN] = 1
+        mode[CC][VTIME] = 0
         tcsetattr(self.fd, when, mode)
+        #os.system("stty raw")
     
     def cook(self, when=TCSAFLUSH):
         tcsetattr(self.fd, when, self.mode)
+        #os.system("stty cooked")
 
     def write(self, s):
         say(s)
@@ -236,10 +238,14 @@ class TUI:
             call += f" > {logpath}"
             os.system(call)
             self.tty.clear()
+            #sgr(7)
+            sgr(0)
+            padding = '\r\n'
             self.cursor.position(1, 1)
             for line in open(logpath).read().splitlines():
-                say(line + "\r\n")
+                say(padding + line)
             say("Press any key to continue...")
+            sgr(0)
             self.read()
             self.tty.clear()
             self.canvas.draw(flush=True)
@@ -341,6 +347,8 @@ class TUI:
         while self.keepAlive:
             self.canvas.draw()
             self.sudoku_scratchsave()
+            #sys.stdout.buffer.flush()
+            print('')
             self.parse_keyboard()
         self.tty.cook()
 

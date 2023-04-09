@@ -3,6 +3,7 @@
 from pathlib import Path
 from typing import List
 import logging as log
+import json
 from formatting import sudoku_board
 
 # Rich logging
@@ -85,6 +86,13 @@ class SudokuSolver:
         if 'load' in kwargs:
             self.load_file(kwargs['load'])
 
+        if 'N' in kwargs:
+            self.N = kwargs['N']
+            self.puzzle = kwargs['board']
+            self.init_generate()
+
+        self.norecurse = kwargs.get('norecurse', False)
+
     def __str__(self):
         return sudoku_board([[self.get_tile(r, c).resolve() for c in range(self.N*self.N)] for r in range(self.N*self.N)])
 
@@ -93,28 +101,42 @@ class SudokuSolver:
         # Container for original puzzle
         self.puzzle = []
         
-        # Determine size
-        self.N = len(text.splitlines()[0].split('|'))
-        log.debug(f"Determined size {self.N}")
+        if text.strip().startswith('{'):
+        
+            # Assuming JSON
+            obj = json.loads(text)
+            self.N = obj['N']
+            self.puzzle = obj['board']
+            self.init_generate()
+        
+        else:
+
+            # Determine size
+            self.N = len(text.splitlines()[0].split('|'))
+            log.debug(f"Determined size {self.N}")
+
+            # Traverse lines in text
+            for line in text.splitlines():
+                
+                # Skip cosmetic lines
+                if line.startswith('-'):
+                    continue
+
+                # Construct puzzle
+                row = []
+                for subrow in line.split('|'):
+                    row += [string2tile(s) for s in subrow.split()]
+                self.puzzle.append(row)
+
+        self.init_generate()
+
+    def init_generate(self):
 
         # Generate indices
         self.indices = []
         for r in range(self.N*self.N):
             for c in range(self.N*self.N):
                 self.indices.append((r, c))
-
-        # Traverse lines in text
-        for line in text.splitlines():
-            
-            # Skip cosmetic lines
-            if line.startswith('-'):
-                continue
-
-            # Construct puzzle
-            row = []
-            for subrow in line.split('|'):
-                row += [string2tile(s) for s in subrow.split()]
-            self.puzzle.append(row)
 
         # Construct board
         self.verbose = False
@@ -263,6 +285,37 @@ class SudokuSolver:
         else:
             log.error("Solution invalid")
 
+        solve_count = self.solve_count()
+        solve_count_finish = (self.N*self.N*self.N*self.N)
+        if solve_count < solve_count_finish:
+            log.warning(f"Solved {solve_count}/{solve_count_finish}")
+            
+            if self.norecurse:
+                log.info("Stop recursion")
+            else:
+                log.info("Making guess")
+
+                # Find candidates
+                for r, c in sorted(self.indices, key=lambda x: self.get_tile(x[0], x[1]).get_candidatescount()):
+                    candidates = self.get_tile(r, c).get_candidates()
+                    log.debug(f"[{r:2d}, {c:2d}] {candidates}")
+                    if len(candidates) > 1:
+                        break
+                log.info(f"Using [{r:2d}, {c:2d}] candidates {candidates}")
+
+                # Traverse candidates
+                for candidate in candidates:
+                    board = [[self.get_tile(r, c).resolve() for c in range(self.N*self.N)] for r in range(self.N*self.N)]
+                    board[r][c] = candidate
+                    child = SudokuSolver(N=self.N, board=board, norecurse=True)
+                    if child.solve():
+                        self.__board = child.__board
+                        return True
+
+        else:
+            return True
+
+
     def validate(self):
         for a in range(self.N*self.N):
             ab, ba = set(), set()
@@ -288,11 +341,12 @@ class SudokuSolver:
 
 if __name__ == "__main__":
     
-    solver = SudokuSolver(load=Path(__file__).parent/"puzzle_4x4.txt")
+    # solver = SudokuSolver(load=Path(__file__).parent/"puzzle_4x4.txt")
+    # solver.commit( 0,  0,  8)
+    # solver.commit( 0,  6,  4)
+    # solver.commit( 1,  3,  2)
 
-    solver.commit( 0,  0,  8)
-    solver.commit( 0,  6,  4)
-    solver.commit( 1,  3,  2)
+    solver = SudokuSolver(load=Path(__file__).parent/"scratch.json")
 
     solver.solve()
     
